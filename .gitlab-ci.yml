@@ -42,6 +42,7 @@ test:unit-test:
     reports:
       junit: $CI_PROJECT_DIR/target/surefire-reports/TEST-com.demo.DemoControllerTest.xml
 
+# Building the Jar is done in the Dockerfile as well. This step is legacy
 build:jar:
   before_script:
     - ./mvnw versions:set -DnewVersion=$CI_COMMIT_REF_NAME
@@ -50,6 +51,18 @@ build:jar:
   dependencies:
     - test:unit-test
 
+build:container-image:
+  image: $DOCKER_IMAGE
+#  before_script:
+#    - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
+  stage: build
+  script:
+    - cd $CI_PROJECT_DIR
+    - docker build -t $CI_CONTAINER_IMAGE:$CI_COMMIT_REF_NAME .
+    dependencies:
+      - test:unit-test
+
+# Like building the jar if the docker image is then publishing the jar to artifactory will be for legacy purpose only
 publish:artifact:
   stage: publish
   script:
@@ -63,6 +76,25 @@ publish:artifact:
       -v "$ARTIFACTORY_URL/$ARTIFACT_NAME-$CI_COMMIT_REF_NAME.jar"
   dependencies:
     - build:jar
+
+
+publish:container-image:
+    image: $DOCKER_IMAGE
+    stage: publish
+    script:
+      - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
+      - docker push $CI_CONTAINER_IMAGE:$CI_COMMIT_REF_NAME
+    dependencies:
+      - build:container-image
+
+cleanup:container-image:
+    image: $DOCKER_IMAGE
+    stage: build
+    script:
+      - docker prune --force --filter label=stage=builder
+      - docker push $CI_CONTAINER_IMAGE:$CI_COMMIT_REF_NAME
+    dependencies:
+      - build:container-image
 
 deploy:TAP:
   before_script:
